@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Live Stream</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: #000000;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #player-wrapper {
+        width: 100vw;
+        height: 100vh;
+        position: relative;
+        background: #000000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #player {
+        width: 100% !important;
+        height: 100% !important;
+    }
+    #player [data-player] {
+        width: 100% !important;
+        height: 100% !important;
+    }
+    #player video {
+        object-fit: contain;
+    }
+    video::-webkit-media-controls { display: none !important; }
+    video::-webkit-media-controls-enclosure { display: none !important; }
+</style>
+<style id="clappr-custom-theme-style"></style>
+</head>
+<body>
+
+<div id="player-wrapper">
+    <div id="player"></div>
+</div>
+
+<!-- Clappr Core (embedded with CDN fallback) -->
+<script src="/clappr.min.js"></script>
+<script>
+if (typeof Clappr === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/npm/@clappr/player@latest/dist/clappr.min.js"><\/script>');
+}
+</script>
+<!-- Level Selector Plugin (embedded with CDN fallback) -->
+<script src="/level-selector.min.js"></script>
+<script>
+if (typeof LevelSelector === 'undefined') {
+    document.write('<script src="https://cdn.jsdelivr.net/gh/clappr/clappr-level-selector-plugin@latest/dist/level-selector.min.js"><\/script>');
+}
+</script>
+
+<script>
+// Dynamic Theme Engine from clappr-player index.html
+function hexToRgba(hex, alpha) {
+    var c = hex.replace('#', '');
+    if (c.length === 3) c = c[0] + c[0] + c[1] + c[1] + c[2] + c[2];
+    var num = parseInt(c, 16);
+    return 'rgba(' + ((num >> 16) & 255) + ',' + ((num >> 8) & 255) + ',' + (num & 255) + ',' + alpha + ')';
+}
+
+function adjustBrightness(hex, percent) {
+    var num = parseInt(hex.replace('#', ''), 16);
+    var amt = Math.round(2.55 * percent);
+    var R = (num >> 16) + amt;
+    var G = (num >> 8 & 0x00FF) + amt;
+    var B = (num & 0x0000FF) + amt;
+    return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+        (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+        (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+}
+
+var currentThemeColor = '#ff7518'; // Default: Halloween Pumpkin Orange
+
+function applyTheme(primaryHex) {
+    if (!primaryHex) primaryHex = '#ff7518';
+    if (!primaryHex.startsWith('#')) primaryHex = '#' + primaryHex;
+    currentThemeColor = primaryHex;
+
+    var dim = adjustBrightness(primaryHex, -25);
+    var glow = hexToRgba(primaryHex, 0.6);
+    var hover = hexToRgba(primaryHex, 0.4);
+    var bg = hexToRgba(primaryHex, 0.15);
+
+    var styleEl = document.getElementById('clappr-custom-theme-style');
+    if (styleEl) {
+        styleEl.textContent = [
+            ':root {',
+            '  --clappr-primary: ' + primaryHex + ';',
+            '  --clappr-dim: ' + dim + ';',
+            '  --clappr-glow: ' + glow + ';',
+            '  --clappr-hover: ' + hover + ';',
+            '  --clappr-bg: ' + bg + ';',
+            '}',
+            '/* SEEKBAR */',
+            '.media-control .bar-background[data-seekbar] { background-color: var(--clappr-bg) !important; }',
+            '.media-control .bar-fill-1[data-seekbar] { background-color: var(--clappr-dim) !important; }',
+            '.media-control .bar-fill-2[data-seekbar] { background-color: var(--clappr-primary) !important; }',
+            '.media-control .bar-hover[data-seekbar] { background-color: var(--clappr-hover) !important; }',
+            '.media-control .bar-scrubber[data-seekbar] .bar-scrubber-icon { background-color: var(--clappr-primary) !important; box-shadow: 0 0 8px var(--clappr-glow) !important; }',
+            '/* BUTTONS & ICONS */',
+            '.media-control .media-control-button svg path, .media-control .media-control-button svg polygon { fill: var(--clappr-primary) !important; }',
+            '.media-control [data-hd-indicator] { color: var(--clappr-primary) !important; }',
+            '/* VOLUME */',
+            '.media-control .segmented-bar-element[data-volume].fill, .media-control .segmented-bar-element[data-volume]:hover { background-color: var(--clappr-primary) !important; }',
+            '.media-control .bar-fill-1[data-volume], .media-control .bar-fill-2[data-volume] { background-color: var(--clappr-primary) !important; }',
+            '/* SPINNER */',
+            '.spinner-three-bounce > div { background-color: var(--clappr-primary) !important; box-shadow: 0 0 10px var(--clappr-glow) !important; }',
+            '/* LEVEL SELECTOR */',
+            '.media-control .level_selector ul li.current { color: var(--clappr-primary) !important; font-weight: 700 !important; }'
+        ].join('\n');
+    }
+
+    if (window.playerInstance && window.playerInstance.core && window.playerInstance.core.mediaControl) {
+        try {
+            window.playerInstance.core.mediaControl.options.mediacontrol = {
+                seekbar: primaryHex,
+                buttons: primaryHex
+            };
+        } catch (_) {}
+    }
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const colorParam = urlParams.get('color') || urlParams.get('theme');
+    if (colorParam) {
+        if (colorParam === 'orange' || colorParam === 'pumpkin' || colorParam === 'halloween') applyTheme('#ff7518');
+        else if (colorParam === 'green' || colorParam === 'parrot') applyTheme('#a4c639');
+        else if (colorParam === 'pink' || colorParam === 'roxie') applyTheme('#e573b5');
+        else if (colorParam === 'cyan') applyTheme('#00e5ff');
+        else applyTheme(colorParam.startsWith('#') ? colorParam : '#' + colorParam);
+    } else {
+        applyTheme('#ff7518');
+    }
+
+    // 1. Resolve Stream Source (Direct Native HLS - Zero Service Worker)
+    const channelId = (urlParams.get('ch') || '').replace(/\D/g, '');
+    let streamUrl = urlParams.get('url') || urlParams.get('src');
+
+    if (!streamUrl) {
+        if (channelId) {
+            streamUrl = '/live/' + channelId + '.m3u8';
+        } else {
+            streamUrl = '/live.m3u8?t=' + Date.now();
+        }
+    }
+
+    // 2. Configure Plugins
+    var pluginsList = [];
+    if (typeof LevelSelector !== 'undefined') {
+        pluginsList.push(LevelSelector);
+    }
+
+    // 3. Initialize Pure Clappr Player
+    window.playerInstance = null;
+    var retryCount = 0;
+    var maxRetries = 10;
+    var lastTime = -1;
+    var stuckDuration = 0;
+    var monitorTimer = null;
+    var retryTimer = null;
+    var currentChannel = '';
+
+    function initClappr(src) {
+        if (window.playerInstance) {
+            try { window.playerInstance.destroy(); } catch (_) {}
+            window.playerInstance = null;
+        }
+
+        var container = document.getElementById('player');
+        if (container) container.innerHTML = '';
+
+        window.playerInstance = new Clappr.Player({
+            parentId: "#player",
+            source: src,
+            mimeType: "application/x-mpegURL",
+            width: "100%",
+            height: "100%",
+            autoPlay: true,
+            preload: "auto",
+            mute: false,
+            useVideoTagDefaultControls: false,
+            chromeless: false,
+            mediacontrol: {
+                seekbar: currentThemeColor,
+                buttons: currentThemeColor
+            },
+            playback: {
+                playInline: true,
+                preload: "auto",
+                controls: false,
+                crossOrigin: "anonymous",
+                hlsjsConfig: {
+                    enableWorker: true,
+                    lowLatencyMode: false,
+                    liveDurationInfinity: true,
+                    // Anti-stutter: lock playback strictly to 1.0x (disables 1.15x catch-up rate acceleration)
+                    maxLiveSyncPlaybackRate: 1.0,
+                    // Low latency: ride 2 chunks (~8s) behind live edge with safe cushion
+                    liveSyncDurationCount: 2,
+                    liveMaxLatencyDurationCount: 6,
+                    maxBufferLength: 30,
+                    maxMaxBufferLength: 60,
+                    maxBufferSize: 60 * 1024 * 1024,
+                    maxBufferHole: 0.5,
+                    highBufferWatchdogPeriod: 2,
+                    nudgeOffset: 0.1,
+                    nudgeMaxRetry: 5,
+                    fragLoadingTimeOut: 20000,
+                    fragLoadingMaxRetryTimeout: 25000,
+                    fragLoadingMaxRetry: 6,
+                    fragLoadingRetryDelay: 500,
+                    manifestLoadingTimeOut: 15000,
+                    manifestLoadingMaxRetry: 6,
+                    levelLoadingTimeOut: 15000,
+                    levelLoadingMaxRetry: 6,
+                    xhrSetup: function(xhr) {
+                        xhr.withCredentials = false;
+                    }
+                }
+            },
+            plugins: pluginsList,
+            levelSelectorConfig: {
+                title: 'Quality',
+                labels: {
+                    2: '1080p',
+                    1: '720p',
+                    0: 'Auto'
+                },
+                labelCallback: function(playbackLevel, customLabel) {
+                    return playbackLevel.level.height ? playbackLevel.level.height + 'p' : customLabel;
+                }
+            }
+        });
+
+        window.playerInstance.on(Clappr.Events.PLAYER_READY, function() {
+            var video = document.querySelector('#player video');
+            if (video) {
+                video.controls = false;
+                video.removeAttribute('controls');
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.setAttribute('x5-playsinline', '');
+
+                var playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(function() {
+                        video.muted = true;
+                        video.play();
+                        var unmuteHandler = function() {
+                            video.muted = false;
+                            window.playerInstance.setVolume(80);
+                            document.removeEventListener('click', unmuteHandler);
+                            document.removeEventListener('touchstart', unmuteHandler);
+                        };
+                        document.addEventListener('click', unmuteHandler, { once: true });
+                        document.addEventListener('touchstart', unmuteHandler, { once: true });
+                    });
+                }
+            }
+            startPlaybackMonitor();
+        });
+
+        window.playerInstance.on(Clappr.Events.PLAYER_PLAY, function() {
+            clearTimeout(retryTimer);
+            retryTimer = null;
+            retryCount = 0;
+            stuckDuration = 0;
+            var activeVideo = document.querySelector('#player video');
+            if (activeVideo) lastTime = activeVideo.currentTime;
+            var video = document.querySelector('#player video');
+            if (video) {
+                video.controls = false;
+                video.removeAttribute('controls');
+            }
+        });
+
+        window.playerInstance.on(Clappr.Events.PLAYER_ERROR, function(err) {
+            console.warn('[Clappr Error] Attempting auto-recovery:', err);
+            handleRetry('player_error');
+        });
+    }
+
+    function handleRetry(reason) {
+        if (!streamUrl || retryTimer) return;
+        retryCount = Math.min(retryCount + 1, maxRetries);
+        var delay = Math.min(1000 * Math.pow(2, retryCount - 1), 8000);
+        console.log('[Clappr Recovery] Retry ' + retryCount + '/' + maxRetries + ' in ' + delay + 'ms (' + reason + ')');
+
+        retryTimer = setTimeout(function() {
+            retryTimer = null;
+            // Always bust the cache and jump to live edge - never replay stale timestamp
+            var freshUrl = '/live.m3u8?t=' + Date.now();
+            stuckDuration = 0;
+            lastTime = -1;
+            if (window.playerInstance) {
+                try {
+                    window.playerInstance.load(freshUrl);
+                    var playResult = window.playerInstance.play();
+                    if (playResult && typeof playResult.catch === 'function') playResult.catch(function() {});
+                    return;
+                } catch (err) {
+                    console.warn('[Clappr Recovery] Reload failed; recreating player:', err);
+                }
+            }
+            initClappr(freshUrl);
+        }, delay);
+    }
+
+    // Playback Monitor: Auto-recovers on stuck buffer or stalled playback (8-second window)
+    function startPlaybackMonitor() {
+        clearInterval(monitorTimer);
+        monitorTimer = setInterval(function() {
+            var video = document.querySelector('#player video');
+            if (!video) return;
+
+            if (video.controls) {
+                video.controls = false;
+                video.removeAttribute('controls');
+            }
+
+            if (video.paused || video.ended || video.seeking) return;
+
+            var curr = video.currentTime;
+            if (lastTime >= 0 && Math.abs(curr - lastTime) < 0.05) {
+                stuckDuration++;
+                if (stuckDuration >= 8) {
+                    console.warn('[Clappr Monitor] Stream stalled for 8s. Recovering buffer...');
+                    stuckDuration = 0;
+                    handleRetry('stall_detected');
+                }
+            } else {
+                stuckDuration = 0;
+                lastTime = curr;
+            }
+        }, 1000);
+    }
+
+    // Auto sync if active channel is changed on admin panel
+    setInterval(async function() {
+        try {
+            var res = await fetch('/api/status');
+            var s = await res.json();
+            if (s.is_running && s.active_channel) {
+                if (currentChannel && currentChannel !== s.active_channel) {
+                    currentChannel = s.active_channel;
+                    if (window.playerInstance) {
+                        window.playerInstance.load('/live.m3u8?t=' + Date.now());
+                        window.playerInstance.play();
+                    }
+                } else if (!currentChannel) {
+                    currentChannel = s.active_channel;
+                }
+            }
+        } catch (_) {}
+    }, 3000);
+
+    if (streamUrl) {
+        initClappr(streamUrl);
+    }
+});
+</script>
+</body>
+</html>

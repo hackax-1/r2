@@ -1,0 +1,28 @@
+{
+    "s3": {
+        "endpoint": "https://<account_id>.r2.cloudflarestorage.com",
+        "region": "auto",
+        "bucket": "your-bucket-name",
+        "key_id": "your-key-id",
+        "key_secret": "your-key-secret",
+        "public_url": "https://pub-xxx.r2.dev"
+    },
+    "iptv": {
+        "host": "http://your-iptv-host:8080",
+        "username": "your-username",
+        "password": "your-password"
+    },
+    "port": 8888,
+    "stream": {
+        "default_channel": "389601",
+        "chunk_duration": 6,
+        "playlist_size": 15,
+        "buffer_delay_chunks": 10,
+        "work_dir": "/tmp/free_cdn_relay"
+    },
+    "tiktok": {
+        "org_id": "",
+        "cookie": "",
+        "orgin_link": "https://p16-ad-sg.tiktokcdn.com/origin/"
+    }
+}

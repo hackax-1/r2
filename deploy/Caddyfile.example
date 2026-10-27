@@ -1,0 +1,9 @@
+stream.example.com {
+    # Block search engines & automated scrapers
+    header {
+        X-Robots-Tag "noindex, nofollow, noarchive"
+    }
+
+    # Reverse proxy origin to Go relay
+    reverse_proxy localhost:8888
+}

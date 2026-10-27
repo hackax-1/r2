@@ -1,0 +1,29 @@
+# Compiled binaries & releases
+cdn-relay
+cdn-relay-*
+free-cdn-relay
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+release.tar.gz
+
+# Local configuration & credentials
+config.json
+.env
+.env.*
+
+# Temporary directories and video chunks
+tmp/
+outputs/
+/tmp/free_cdn_relay/
+*.ts
+*.m3u8
+
+# Editor & OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.bak

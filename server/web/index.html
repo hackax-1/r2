@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CDN Relay Admin</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+</head>
+<body>
+  <h1>CDN Stream Relay Dashboard</h1>
+  <hr>
+
+  <h2>Status: <span id="statusTag">UNKNOWN</span></h2>
+
+  <h3>Channel Ingest Controls</h3>
+  <form onsubmit="startChannel(); return false;">
+    <p>
+      <label>Channel ID: <input type="text" id="inputChannel" value="389601" size="24"></label>
+      <button type="submit">Start Ingest</button>
+      <button type="button" onclick="stopChannel()">Stop Stream</button>
+      <button type="button" onclick="reloadPlayer()">Reload Player</button>
+    </p>
+    <p>
+      <label>Referer: <input type="text" id="inputReferer" placeholder="e.g. https://domain.example/" size="35"></label>
+      <label>User-Agent: <input type="text" id="inputUA" placeholder="Optional User-Agent" size="30"></label>
+    </p>
+  </form>
+
+  <h3>Presets</h3>
+  <p>
+    <button type="button" onclick="switchChannel('389601')">Family Guy (389601)</button>
+    <button type="button" onclick="switchChannel('352259')">TUDN (352259)</button>
+    <button type="button" onclick="switchChannel('347276')">ESPN (347276)</button>
+    <button type="button" onclick="switchChannel('347288')">NFL RedZone (347288)</button>
+    <button type="button" onclick="switchChannel('347285')">FOX Sports 1 (347285)</button>
+  </p>
+
+  <h3>Endpoints</h3>
+  <ul>
+    <li>Origin Manifest: <a id="localUrlText" href="/live.m3u8" target="_blank">/live.m3u8</a></li>
+    <li>Viewer Player: <a href="/watch" target="_blank">/watch</a></li>
+  </ul>
+
+  <h3>Metrics</h3>
+  <table border="1" cellpadding="5" cellspacing="0">
+    <tr><th>Active Channel</th><td id="mChannel">-</td></tr>
+    <tr><th>Edge Buffer</th><td id="mBuffer">OFFLINE</td></tr>
+    <tr><th>Total Chunks</th><td id="mChunks">0</td></tr>
+    <tr><th>Sequence Number</th><td id="mSeq">#0</td></tr>
+    <tr><th>Upload Latency</th><td id="mLatency">-</td></tr>
+    <tr><th>Player Buffer</th><td id="mPlayerBuffer">-</td></tr>
+  </table>
+
+  <h3>Monitor Preview</h3>
+  <video id="videoPlayer" controls width="480" height="270"></video>
+
+  <h3>Logs <button type="button" onclick="clearLogs()">Clear</button></h3>
+  <textarea id="terminal" rows="18" cols="100" readonly></textarea>
+
+  <script>
+    let hls = null;
+    let playerStarted = false;
+    let currentChannel = '';
+    const video = document.getElementById('videoPlayer');
+
+    function attachHls(sourceUrl) {
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+
+      if (Hls.isSupported()) {
+        hls = new Hls({
+          debug: false,
+          enableWorker: true,
+          lowLatencyMode: false,
+          liveDurationInfinity: true,
+          maxLiveSyncPlaybackRate: 1.0,
+          liveSyncDurationCount: 6,
+          liveMaxLatencyDurationCount: 20,
+          maxBufferLength: 60,
+          maxMaxBufferLength: 120,
+          maxBufferSize: 90 * 1024 * 1024,
+          backBufferLength: 60,
+          xhrSetup: function(xhr) {
+            xhr.withCredentials = false;
+          }
+        });
+
+        hls.loadSource(sourceUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(() => {});
+        });
+
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                hls.destroy();
+                break;
+            }
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = sourceUrl;
+        video.addEventListener('loadedmetadata', () => video.play().catch(() => {}));
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const s = await res.json();
+
+        const tag = document.getElementById('statusTag');
+        const mBuf = document.getElementById('mBuffer');
+
+        const activeCh = (s.active_channel || '').trim();
+        if (currentChannel && activeCh && currentChannel !== activeCh) {
+          currentChannel = activeCh;
+          playerStarted = false;
+          if (hls) {
+            hls.destroy();
+            hls = null;
+          }
+        } else if (!currentChannel && activeCh) {
+          currentChannel = activeCh;
+        }
+
+        if (s.is_running) {
+          if (!s.is_buffer_ready) {
+            tag.textContent = 'WARMING BUFFER [' + s.buffered_chunks + '/' + s.buffer_delay_chunks + ' (' + (s.buffered_chunks * 6) + 's/60s)]';
+            mBuf.textContent = s.buffered_chunks + '/' + s.buffer_delay_chunks + ' chunks (' + (s.buffered_chunks * 6) + 's)';
+          } else {
+            tag.textContent = 'LIVE (ACTIVE BUFFER)';
+            mBuf.textContent = 'WARM / STABLE';
+
+            if (!playerStarted) {
+              playerStarted = true;
+              attachHls('/live.m3u8?t=' + Date.now());
+            }
+          }
+        } else {
+          tag.textContent = 'STOPPED';
+          mBuf.textContent = 'OFFLINE';
+        }
+
+        document.getElementById('mChannel').textContent = s.active_channel || '-';
+        document.getElementById('mChunks').textContent = s.total_chunks || '0';
+        document.getElementById('mSeq').textContent = '#' + (s.sequence_number || '0');
+        document.getElementById('mLatency').textContent = s.last_chunk_upload_ms ? (s.last_chunk_upload_ms.toFixed(0) + ' ms') : '-';
+
+        if (s.logs && s.logs.length) {
+          renderLogs(s.logs);
+        }
+      } catch (_) {}
+    }
+
+    function renderLogs(logs) {
+      const term = document.getElementById('terminal');
+      const shouldScroll = term.scrollTop + term.clientHeight >= term.scrollHeight - 30;
+      term.value = logs.join('\n');
+      if (shouldScroll) {
+        term.scrollTop = term.scrollHeight;
+      }
+    }
+
+    async function startChannel() {
+      playerStarted = false;
+      const ch = document.getElementById('inputChannel').value.trim() || '389601';
+      const ref = (document.getElementById('inputReferer')?.value || '').trim();
+      const ua = (document.getElementById('inputUA')?.value || '').trim();
+      let u = '/api/start?channel=' + encodeURIComponent(ch);
+      if (ref) u += '&referer=' + encodeURIComponent(ref);
+      if (ua) u += '&ua=' + encodeURIComponent(ua);
+      await fetch(u);
+    }
+
+    async function stopChannel() {
+      playerStarted = false;
+      await fetch('/api/stop');
+      if (video) video.pause();
+    }
+
+    function switchChannel(ch) {
+      document.getElementById('inputChannel').value = ch;
+      startChannel();
+    }
+
+    function reloadPlayer() {
+      playerStarted = true;
+      if (hls) {
+        hls.destroy();
+        hls = null;
+      }
+      attachHls('/live.m3u8?t=' + Date.now());
+    }
+
+    function clearLogs() {
+      document.getElementById('terminal').value = '[system] logs cleared';
+    }
+
+    function updateBufferMeter() {
+      if (video && video.buffered && video.buffered.length > 0) {
+        const cur = video.currentTime;
+        let ahead = 0;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= cur && cur <= video.buffered.end(i)) {
+            ahead = (video.buffered.end(i) - cur);
+            break;
+          }
+        }
+        const bufEl = document.getElementById('mPlayerBuffer');
+        if (bufEl) {
+          bufEl.textContent = ahead.toFixed(1) + 's in RAM';
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('localUrlText').textContent = window.location.origin + '/live.m3u8';
+      document.getElementById('localUrlText').href = window.location.origin + '/live.m3u8';
+      pollStatus();
+      setInterval(pollStatus, 1500);
+      setInterval(updateBufferMeter, 500);
+    });
+  </script>
+</body>
+</html>

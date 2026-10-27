@@ -1,0 +1,15 @@
+[Unit]
+Description=Free CDN Stream Relay Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/cdn-relay
+ExecStart=/opt/cdn-relay/cdn-relay -port 8888 -channel 354029 -autostart=true
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
